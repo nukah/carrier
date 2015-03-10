@@ -1,0 +1,25 @@
+db:
+  host: db
+  port: 5432
+  database: scade
+  password: scade
+  username: scade
+
+redis:
+  host: redis
+  port: 6379
+  password:
+  database: 0
+
+sockets:
+  maxConnectionCount: 10000
+  transports:
+    - websocket
+    - htmlfile
+    - xhr-polling
+    - jsonp-polling
+  ip: 127.0.0.1
+  port: 8080
+
+push:
+  gcm_key: AIzaSyDSCPH4FbbUmRlZ1geQNGDYqQzee2RANd4
