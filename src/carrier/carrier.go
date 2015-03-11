@@ -1,15 +1,29 @@
 package carrier
 
-import "net/http"
-import "flag"
-import "fmt"
-import "log"
-import "gopkg.in/redis.v2"
-import "github.com/spf13/cast"
-import "github.com/spf13/viper"
-import "github.com/Intelity/go-socket.io"
-import "github.com/jinzhu/gorm"
-import _ "github.com/lib/pq"
+import (
+	"flag"
+	"fmt"
+	"github.com/Intelity/go-socket.io"
+	"github.com/jinzhu/gorm"
+	_ "github.com/lib/pq"
+	"github.com/spf13/cast"
+	"github.com/spf13/viper"
+	"github.com/twinj/uuid"
+	"gopkg.in/redis.v2"
+	"log"
+	"net/http"
+	"time"
+)
+
+type CarrierInstance struct {
+	ID string
+}
+
+func NewCarrier() *CarrierInstance {
+	return &CarrierInstance{
+		ID: uuid.Formatter(uuid.NewV4(), uuid.Clean),
+	}
+}
 
 var (
 	Redis        *redis.Client
@@ -18,30 +32,40 @@ var (
 	SocketsMap   map[*socketio.NameSpace]int
 	UsersMap     map[int]map[*socketio.NameSpace]bool
 	SocketServer *socketio.SocketIOServer
+	Carrier      = NewCarrier()
 )
 
 func init() {
+
+	// Environment parsing from CLI
+	//
+
 	flag.StringVar(&Environment, "e", "development", "Configuration environment")
 	flag.Parse()
+
 	viper.SetConfigName(Environment)
 	viper.AddConfigPath("../config")
-	err := viper.ReadInConfig()
+
+	if viper.ReadInConfig() != nil {
+		log.Fatal("Error while loading configuration")
+	}
 
 	SocketsMap = make(map[*socketio.NameSpace]int)
 	UsersMap = make(map[int]map[*socketio.NameSpace]bool)
 
-	if err != nil {
-		log.Fatal("Error while loading configuration")
-	}
 	if !viper.IsSet("redis") {
 		log.Fatal("Redis configuration is missing")
 	}
+
 	if !viper.IsSet("db") {
 		log.Fatal("Database configuration is missing")
 	}
 
+	// Database initialization
+	//
+
 	dbConfig := viper.GetStringMap("db")
-	db, err := gorm.Open("postgres", fmt.Sprintf("host=%s port=%d dbname=%s password=%s user=%s",
+	dbConnection, err := gorm.Open("postgres", fmt.Sprintf("host=%s port=%d dbname=%s password=%s user=%s connect_timeout=5",
 		dbConfig["host"],
 		dbConfig["port"],
 		dbConfig["database"],
@@ -49,16 +73,18 @@ func init() {
 		dbConfig["username"],
 	))
 
-	DB = &db
+	DB = &dbConnection
+
 	if Environment == "development" {
 		DB.LogMode(true)
 	}
-	err = DB.DB().Ping()
 
-	if err != nil {
-		log.Fatal("Error connecting to database (", err, ")")
+	if DB.DB().Ping() != nil {
+		log.Fatal(fmt.Sprintf("Error connecting to database."))
 	}
 
+	// Redis initialization
+	//
 	redisConfig := viper.GetStringMap("redis")
 	redisOptions := &redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", redisConfig["host"], redisConfig["port"]),
@@ -69,8 +95,11 @@ func init() {
 	Redis = redis.NewTCPClient(redisOptions)
 
 	if _, err = Redis.Ping().Result(); err != nil {
-		log.Fatal("Error connecting to redis: (", err, ")")
+		log.Fatal(fmt.Sprintf("Error connecting to redis (%s).", err))
 	}
+
+	// Transport server initialization
+	//
 
 	transports := socketio.NewTransportManager()
 
@@ -87,7 +116,6 @@ func init() {
 
 	SocketServer.On("authorize", AuthorizationHandler)
 	SocketServer.On("disconnect", DisconnectionHandler)
-	SocketServer.On("api_request", APIHandler)
 }
 
 func Init() {
@@ -97,11 +125,22 @@ func Init() {
 	}
 
 	// http.Handle("/socketIo", socket_server)
-
+	log.Println("Carrier Id:", Carrier.ID)
 	defer DB.Close()
 	defer Redis.Close()
-
+	HubSubscribe()
 	log.Printf("Starting up Carrier on %s:%d/socketIo", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"])
 	log.Fatal(http_server.ListenAndServe())
 
+}
+
+func HubSubscribe() {
+	subtimeout := time.NewTicker(time.Millisecond * 500)
+	go func() {
+		for range subtimeout.C {
+			//instruction := Redis.LPop("formation:hub:commands")
+			log.Println("Tick")
+			//ProcessInstructions(instruction)
+		}
+	}()
 }

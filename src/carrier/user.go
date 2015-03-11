@@ -10,28 +10,25 @@ import (
 )
 
 func FindUserBySocket(ns *socketio.NameSpace) (*User, error) {
-	var user = User{}
-
+	user := new(User)
 	if _, found := SocketsMap[ns]; !found {
-		return nil, errors.New(fmt.Sprintf("(UserBySocket) User not found for socket session (%s)", ns.Session.SessionId))
+		return user, errors.New(fmt.Sprintf("(UserBySocket) User not found for socket session (%s)", ns.Session.SessionId))
 	}
-	uid := SocketsMap[ns]
 
-	query := DB.Find(&user, uid)
-
+	query := DB.Find(user, SocketsMap[ns])
 	if query.Error != nil {
-		return &user, errors.New(fmt.Sprintf("(UserBySocket) User not found in database (%s)", query.Error))
+		return user, errors.New(fmt.Sprintf("(UserBySocket) User not found in database (%s)", query.Error))
 	}
-	return &user, nil
+	return user, nil
 }
 
-func FindSocketByUserId(user_id int) (*map[*socketio.NameSpace]bool, error) {
-	var sockets = map[*socketio.NameSpace]bool{}
+func FindSocketByUserId(user_id int) (map[*socketio.NameSpace]bool, error) {
+	sockets := map[*socketio.NameSpace]bool{}
 
 	if sockets, found := UsersMap[user_id]; !found {
-		return &sockets, errors.New(fmt.Sprintf("(SocketByUser) Not found for uid (%d)", user_id))
+		return sockets, errors.New(fmt.Sprintf("(SocketByUser) Not found for uid (%d)", user_id))
 	}
-	return &sockets, nil
+	return sockets, nil
 }
 
 type User struct {
@@ -67,6 +64,23 @@ func (u *User) GetInCallCount() int {
 }
 
 func (u *User) SendCallConnect(call *Call) error {
+	formatted_call := &CallEvent{
+		Type:           "connect",
+		CallId:         u.ID,
+		CallType:       call.Type,
+		CallStopReason: "",
+		Source:         call.Source.ID,
+		Destination:    call.Destination.ID,
+	}
+
+	if sessions, err := FindSocketByUserId(u.ID); err == nil {
+		for session := range sessions {
+			go session.Emit("call", formatted_call)
+		}
+	} else {
+		// RPC call for another carrier in formation
+	}
+
 	return nil
 }
 
@@ -74,17 +88,7 @@ func (u *User) InCall() bool {
 	return false
 }
 
-func (u *User) SetOnline(ns *socketio.NameSpace) error {
-	if _, found := SocketsMap[ns]; found {
-		return errors.New("User on that socket is already connected.")
-	}
-
-	SocketsMap[ns] = u.ID
-	if _, found := UsersMap[u.ID]; !found {
-		UsersMap[u.ID] = make(map[*socketio.NameSpace]bool)
-	}
-	UsersMap[u.ID][ns] = true
-
+func (u *User) SetOnline() error {
 	defer func() {
 		count := Redis.SCard("users:online").Val()
 		Redis.SAdd("users:online:peaks", strconv.FormatInt(count, 10))
@@ -102,7 +106,7 @@ func (u *User) SetOnline(ns *socketio.NameSpace) error {
 	return nil
 }
 
-func (u *User) SetOffline(ns *socketio.NameSpace) error {
+func (u *User) SetOffline() error {
 	pipeline := Redis.Pipeline()
 
 	pipeline.SRem("users:online", strconv.Itoa(u.ID))
@@ -116,12 +120,7 @@ func (u *User) SetOffline(ns *socketio.NameSpace) error {
 		return err
 	}
 
-	finish := time.Now().Unix()
-
-	Redis.HIncrBy("users:online:time", strconv.Itoa(u.ID), finish-start)
-
-	defer delete(SocketsMap, ns)
-	defer delete(UsersMap[u.ID], ns)
+	Redis.HIncrBy("users:online:time", strconv.Itoa(u.ID), time.Now().Unix()-start)
 
 	return nil
 }
