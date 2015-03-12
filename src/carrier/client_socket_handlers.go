@@ -3,11 +3,12 @@ package carrier
 import (
 	_ "bytes"
 	_ "encoding/base64"
-	"github.com/Intelity/go-socket.io"
+	"github.com/nukah/go-socket.io"
 	_ "gopkg.in/vmihailenco/msgpack.v2"
 	"log"
 	_ "net/url"
 	_ "strings"
+	"time"
 )
 
 func MessageHandler(ns *socketio.NameSpace, body string) {
@@ -53,6 +54,13 @@ type APIRequest struct {
 	EventAction, Event string
 }
 
+func ConnectHandler(ns *socketio.NameSpace) {
+	time.AfterFunc(time.Second*10, func() {
+		checkSocketAuthorization(ns)
+	})
+	log.Printf("(Connect) New client(%s) connected", ns.Id())
+}
+
 func AuthorizationHandler(ns *socketio.NameSpace, token string) {
 	user := new(User)
 
@@ -60,26 +68,24 @@ func AuthorizationHandler(ns *socketio.NameSpace, token string) {
 	if err != nil {
 		log.Printf("(Authorization) DB Search error: %s", err)
 	}
-
-	SocketsMap[ns] = int(user.ID)
-
 	if _, found := UsersMap[user.ID]; !found {
 		UsersMap[user.ID] = make(map[*socketio.NameSpace]bool)
 	}
-	UsersMap[user.ID][ns] = true
 
+	SocketsMap[ns] = int(user.ID)
+	UsersMap[user.ID][ns] = true
+	ns.Session.Values["uid"] = user.ID
+	Redis.HSet("formation:users", user.ID, Carrier.ID)
 	user.SetOnline()
 }
 
 func DisconnectionHandler(ns *socketio.NameSpace) {
-	user, err := FindUserBySocket(ns)
-
-	if err != nil {
-		log.Println(err)
-	}
+	user, _ := FindUserBySocket(ns)
 
 	defer delete(SocketsMap, ns)
-	defer delete(UsersMap[user.ID], ns)
-
-	user.SetOffline()
+	if user != nil {
+		delete(UsersMap[user.ID], ns)
+		Redis.HDel("formation:users", user.ID)
+		user.SetOffline()
+	}
 }

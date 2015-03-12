@@ -2,34 +2,9 @@ package carrier
 
 import (
 	"database/sql"
-	"errors"
-	"fmt"
-	"github.com/Intelity/go-socket.io"
 	"strconv"
 	"time"
 )
-
-func FindUserBySocket(ns *socketio.NameSpace) (*User, error) {
-	user := new(User)
-	if _, found := SocketsMap[ns]; !found {
-		return user, errors.New(fmt.Sprintf("(UserBySocket) User not found for socket session (%s)", ns.Session.SessionId))
-	}
-
-	query := DB.Find(user, SocketsMap[ns])
-	if query.Error != nil {
-		return user, errors.New(fmt.Sprintf("(UserBySocket) User not found in database (%s)", query.Error))
-	}
-	return user, nil
-}
-
-func FindSocketByUserId(user_id int) (map[*socketio.NameSpace]bool, error) {
-	sockets := map[*socketio.NameSpace]bool{}
-
-	if sockets, found := UsersMap[user_id]; !found {
-		return sockets, errors.New(fmt.Sprintf("(SocketByUser) Not found for uid (%d)", user_id))
-	}
-	return sockets, nil
-}
 
 type User struct {
 	ID          int
@@ -63,7 +38,7 @@ func (u *User) GetInCallCount() int {
 	return 0
 }
 
-func (u *User) SendCallConnect(call *Call) error {
+func (u *User) SendCallConnect(call Call) error {
 	formatted_call := &CallEvent{
 		Type:           "connect",
 		CallId:         u.ID,
@@ -78,7 +53,8 @@ func (u *User) SendCallConnect(call *Call) error {
 			go session.Emit("call", formatted_call)
 		}
 	} else {
-		// RPC call for another carrier in formation
+		err := FleetCallConnect(u, call)
+		return err
 	}
 
 	return nil

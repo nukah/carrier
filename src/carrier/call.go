@@ -60,6 +60,12 @@ func (c *Call) CallLimitReached() error {
 }
 
 func (c *Call) ParticipantsAvailable() error {
+	if c.Destination.Offline() {
+		return errors.New("Destination user is offline!")
+	}
+	if c.Source.Offline() {
+		return errors.New("Source user is offline!")
+	}
 	if c.Destination.InCall() || c.Source.InCall() {
 		return errors.New("Participants in call already")
 	}
@@ -86,7 +92,6 @@ func (c *Call) Initialize(call_id int) error {
 		return errors.New("Call is already in process")
 	}
 
-	Redis.SetNX(fmt.Sprintf("carrier:calls:%d", c.ID), Carrier.ID)
 	DB.Model(c).Related(&c.Destination, "destination_id")
 	DB.Model(c).Related(&c.Source, "source_id")
 
@@ -95,15 +100,17 @@ func (c *Call) Initialize(call_id int) error {
 	}
 
 	if err := c.ParticipantsAvailable(); err != nil {
-		defer c.FinishCall(13)
+		c.FinishCall(13)
 		return err
 	}
 
-	if err := c.Destination.SendCallConnect(c); err != nil {
+	if err := c.Destination.SendCallConnect(*c); err != nil {
 		return err
 	}
+	time.AfterFunc(time.Second*40, func() {
+	})
 
-	if err := c.Source.SendCallConnect(c); err != nil {
+	if err := c.Source.SendCallConnect(*c); err != nil {
 		return err
 	}
 	return nil
