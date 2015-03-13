@@ -1,0 +1,27 @@
+db:
+  host: db
+  port: 5432
+  database: scade
+  password: scade
+  username: scade
+
+redis:
+  host: redis
+  port: 6379
+  password:
+  database: 1
+
+sockets:
+  ip: 127.0.0.1
+  port: 3002
+
+control:
+  ip: 127.0.0.1
+  port: 5500
+
+rpc:
+  ip: 127.0.0.1
+  port: 5601
+
+push:
+  gcm_key: AIzaSyDSCPH4FbbUmRlZ1geQNGDYqQzee2RANd4

@@ -24,7 +24,7 @@ func FindUserBySocket(ns *socketio.NameSpace) (*User, error) {
 		return user, errors.New(fmt.Sprintf("(UserBySocket) User not found for socket session (%s)", ns.Id()))
 	}
 
-	query := DB.Find(user, SocketsMap[ns])
+	query := _db.Find(user, SocketsMap[ns])
 	if query.Error != nil {
 		return user, errors.New(fmt.Sprintf("(UserBySocket) User not found in database (%s)", query.Error))
 	}

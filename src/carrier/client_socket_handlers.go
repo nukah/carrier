@@ -64,7 +64,7 @@ func ConnectHandler(ns *socketio.NameSpace) {
 func AuthorizationHandler(ns *socketio.NameSpace, token string) {
 	user := new(User)
 
-	err := DB.Find(&user, token).Error
+	err := _db.Find(&user, token).Error
 	if err != nil {
 		log.Printf("(Authorization) DB Search error: %s", err)
 	}
@@ -75,7 +75,7 @@ func AuthorizationHandler(ns *socketio.NameSpace, token string) {
 	SocketsMap[ns] = int(user.ID)
 	UsersMap[user.ID][ns] = true
 	ns.Session.Values["uid"] = user.ID
-	Redis.HSet("formation:users", user.ID, Carrier.ID)
+	_redis.HSet("formation:users", string(user.ID), _carrier.ID)
 	user.SetOnline()
 }
 
@@ -85,7 +85,7 @@ func DisconnectionHandler(ns *socketio.NameSpace) {
 	defer delete(SocketsMap, ns)
 	if user != nil {
 		delete(UsersMap[user.ID], ns)
-		Redis.HDel("formation:users", user.ID)
+		_redis.HDel("formation:users", string(user.ID))
 		user.SetOffline()
 	}
 }
