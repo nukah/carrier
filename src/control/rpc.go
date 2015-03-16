@@ -9,42 +9,64 @@ type UserCallRPCArguments struct {
 	Call Call
 }
 
+type UserCallStopArguments struct {
+	User           User
+	Call           Call
+	CallStopReason string
+}
+
 type UserRPCArguments struct {
 	User User
 }
 
+type ControlRPC int
+
 func userOnline(user User) bool {
 	var result bool
-	online := make(chan bool)
-	carrierId := _redis.HGet("formation:users", string(user.ID)).Val()
+	carrierId := this.redis.HGet("formation:users", string(user.ID)).Val()
 	if carrierId == "" {
-		log.Printf("(RPC) Carrier ID not retrieved")
+		log.Printf("(RPC) (User(%d) userOnline) Carrier ID not retrieved", user.ID)
 		return false
+	} else {
+		call := this.fleet[carrierId].Go("isUserOnline", &UserRPCArguments{user}, result, nil)
+		<-call.Done
+		return result
 	}
-	_control.formation[carrierId].Go("isUserOnline", &UserRPCArguments{user}, result, nil)
-	result = <-online
-	return result
+	return false
 }
 
 func userInCall(user User) bool {
 	var result bool
-	inCall := make(chan bool)
-	carrierId := _redis.HGet("formation:users", string(user.ID)).Val()
+	carrierId := this.redis.HGet("formation:users", string(user.ID)).Val()
 	if carrierId == "" {
-		log.Printf("(RPC) Carrier ID not retrieved")
+		log.Printf("(RPC) (User(%d) userInCall) Carrier ID not retrieved", user.ID)
 		return false
+	} else {
+		call := this.fleet[carrierId].Go("isUserInCall", &UserRPCArguments{user}, result, nil)
+		<-call.Done
+		return result
 	}
-	_control.formation[carrierId].Go("isUserInCall", &UserRPCArguments{user}, result, nil)
-	result = <-inCall
-	return result
+	return false
+}
+
+func makeCallStop(user User, call Call, reason string) {
+	carrierId := this.redis.HGet("formation:users", string(user.ID)).Val()
+	if carrierId == "" {
+		log.Printf("(RPC) (Call(%d), User(%d) callStop)  Carrier ID not retrieved", call.ID, user.ID)
+		return
+	} else {
+		this.fleet[carrierId].Call("CallStop", &UserCallStopArguments{user, call, reason}, nil)
+		return
+	}
 }
 
 func makeCallConnect(user User, call Call) {
-	carrierId := _redis.HGet("formation:users", string(user.ID)).Val()
+	carrierId := this.redis.HGet("formation:users", string(user.ID)).Val()
 	if carrierId == "" {
-		log.Printf("(RPC) Carrier ID not retrieved")
+		log.Printf("(RPC) (Call(%d), User(%d) callConnect)  Carrier ID not retrieved", call.ID, user.ID)
+		return
+	} else {
+		this.fleet[carrierId].Call("CallConnect", &UserCallRPCArguments{user, call}, nil)
+		return
 	}
-	_control.formation[carrierId].Call("CallConnect", &UserCallRPCArguments{user, call}, nil)
 }
-
-type ControlRPC int

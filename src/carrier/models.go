@@ -43,6 +43,8 @@ type Call struct {
 	Incognito           bool
 	SourceReveal        bool
 	DestinationReveal   bool
+	SourceAccept        bool
+	DestinationAccept   bool
 	Status              int
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
@@ -58,4 +60,5 @@ type Call struct {
 	DestinationID       int
 	SourceID            int
 	Source              User
+	CallTimer           time.Timer
 }

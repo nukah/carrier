@@ -7,7 +7,7 @@ import (
 
 func (u *User) LastProfile() *Profile {
 	profile := &Profile{}
-	_db.Model(&u).Related(&Profile{}).Order("created_at DESC").First(&profile)
+	this.db.Model(&u).Related(&Profile{}).Order("created_at DESC").First(&profile)
 	return profile
 }
 
@@ -36,17 +36,35 @@ func (u *User) SendCallConnect(call Call) error {
 	return nil
 }
 
+func (u *User) SendCallStop(call Call, reason string) error {
+	formatted_call := &callEvent{
+		Type:           "stop",
+		CallId:         u.ID,
+		CallType:       call.Type,
+		CallStopReason: reason,
+		Source:         call.Source.ID,
+		Destination:    call.Destination.ID,
+	}
+
+	if sessions, err := FindSocketByUserId(u.ID); err == nil {
+		for session := range sessions {
+			go session.Emit("call", formatted_call.to_JSON())
+		}
+	}
+	return nil
+}
+
 func (u *User) InCall() bool {
 	return false
 }
 
 func (u *User) SetOnline() error {
 	defer func() {
-		count := _redis.SCard("users:online").Val()
-		_redis.SAdd("users:online:peaks", strconv.FormatInt(count, 10))
+		count := this.redis.SCard("users:online").Val()
+		this.redis.SAdd("users:online:peaks", strconv.FormatInt(count, 10))
 	}()
 
-	pipeline := _redis.Pipeline()
+	pipeline := this.redis.Pipeline()
 	pipeline.SAdd("users:online", string(u.ID))
 	pipeline.SAdd("users:online:today", string(u.ID))
 	pipeline.SAdd("users:reports:cleanup", string(u.ID))
@@ -59,7 +77,7 @@ func (u *User) SetOnline() error {
 }
 
 func (u *User) SetOffline() error {
-	pipeline := _redis.Pipeline()
+	pipeline := this.redis.Pipeline()
 
 	pipeline.SRem("users:online", string(u.ID))
 	pipeline.SAdd("users:reports:cleanup", string(u.ID))
@@ -72,7 +90,7 @@ func (u *User) SetOffline() error {
 		return err
 	}
 
-	_redis.HIncrBy("users:online:time", string(u.ID), time.Now().Unix()-start)
+	this.redis.HIncrBy("users:online:time", string(u.ID), time.Now().Unix()-start)
 
 	return nil
 }

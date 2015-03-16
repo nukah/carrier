@@ -2,7 +2,6 @@ package control
 
 import (
 	_ "carrier"
-	"flag"
 	"fmt"
 	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
@@ -17,62 +16,57 @@ import (
 )
 
 type controlInstance struct {
-	formation map[string]*rpc.Client
+	fleet               map[string]*rpc.Client
+	redis               *redis.Client
+	db                  *gorm.DB
+	controlSocketServer *socketio.SocketIOServer
+	calls               map[string]*Call
 }
 
-var (
-	_redis   *redis.Client
-	_db      *gorm.DB
-	_control = &controlInstance{
-		formation: make(map[string]*rpc.Client),
-	}
-	socketServer *socketio.SocketIOServer
-)
-
-func initializeDatabase() {
+func (ci *controlInstance) initDb() {
 	if !viper.IsSet("db") {
 		log.Fatal("(Configuration) Database configuration is missing")
 	}
 
-	dbConfig := viper.GetStringMap("db")
-	dbConnection, _ := gorm.Open("postgres", fmt.Sprintf("host=%s port=%d dbname=%s password=%s user=%s connect_timeout=5",
-		dbConfig["host"],
-		dbConfig["port"],
-		dbConfig["database"],
-		dbConfig["password"],
-		dbConfig["username"],
+	dbconf := viper.GetStringMap("db")
+	dbconn, _ := gorm.Open("postgres", fmt.Sprintf("host=%s port=%d dbname=%s password=%s user=%s connect_timeout=5",
+		dbconf["host"],
+		dbconf["port"],
+		dbconf["database"],
+		dbconf["password"],
+		dbconf["username"],
 	))
 
-	_db = &dbConnection
-	_db.LogMode(true)
+	this.db = &dbconn
+	this.db.LogMode(true)
 
-	if _db.DB().Ping() != nil {
+	if this.db.DB().Ping() != nil {
 		log.Fatal(fmt.Sprintf("(Configuration) Error connecting to database."))
 	}
 }
 
-func initializeRedis() {
+func (ci *controlInstance) initRedis() {
 	if !viper.IsSet("redis") {
 		log.Fatal("(Configuration) Redis configuration is missing")
 	}
-	redisConfig := viper.GetStringMap("redis")
-	redisOptions := &redis.Options{
-		Addr:     fmt.Sprintf("%s:%d", redisConfig["host"], redisConfig["port"]),
-		Password: cast.ToString(redisConfig["password"]),
-		DB:       int64(cast.ToInt(redisConfig["database"])),
+	redisconf := viper.GetStringMap("redis")
+	redisopt := &redis.Options{
+		Addr:     fmt.Sprintf("%s:%d", redisconf["host"], redisconf["port"]),
+		Password: cast.ToString(redisconf["password"]),
+		DB:       int64(cast.ToInt(redisconf["database"])),
 	}
 
-	_redis = redis.NewTCPClient(redisOptions)
+	this.redis = redis.NewTCPClient(redisopt)
 
-	if _, err := _redis.Ping().Result(); err != nil {
+	if _, err := this.redis.Ping().Result(); err != nil {
 		log.Fatal(fmt.Sprintf("Error connecting to redis (%s).", err))
 	}
 }
 
-func initializeRPC() {
-	entity := new(ControlRPC)
+func (ci *controlInstance) startRPC() {
+	controlRPC := new(ControlRPC)
 
-	rpc.Register(entity)
+	rpc.Register(controlRPC)
 	rpc.HandleHTTP()
 
 	rpcHandler, err := net.Listen("tcp", fmt.Sprintf("%s:%d", viper.GetStringMap("rpc")["ip"], viper.GetStringMap("rpc")["port"]))
@@ -85,59 +79,22 @@ func initializeRPC() {
 	}()
 }
 
-func initializeControl() {
-	carrierFormation := _redis.HGetAllMap("carriers:formation").Val()
-	for id, host := range carrierFormation {
-		connection, err := rpc.DialHTTP("tcp", host)
-		if err != nil {
-			log.Printf("(Control) Error connecting to carrier(%s): %s.", host, err)
-		} else {
-			log.Printf("(Formation) Communication with carrier(%s)@(%s) established.", id, host)
-			_control.formation[id] = connection
-		}
-	}
-
+func (ci *controlInstance) initSocket() {
 	transports := socketio.NewTransportManager()
 	transports.RegisterTransport("websocket")
 
-	sioConfig := &socketio.Config{}
-	sioConfig.Transports = transports
-	sioConfig.ClosingTimeout = 50000
-	sioConfig.HeartbeatTimeout = 10000
+	socketconf := &socketio.Config{}
+	socketconf.Transports = transports
+	socketconf.ClosingTimeout = 50000
+	socketconf.HeartbeatTimeout = 10000
 
-	socketServer = socketio.NewSocketIOServer(sioConfig)
-
-	SetupSocketHandlers(socketServer)
+	this.controlSocketServer = socketio.NewSocketIOServer(socketconf)
+	this.setupSocketHandlers()
 }
 
-func SetupSocketHandlers(socketServer *socketio.SocketIOServer) {
-	// socketServer.On("connect", ConnectHandler)
-	// socketServer.On("authorize", AuthorizationHandler)
-	// socketServer.On("disconnect", DisconnectionHandler)
-}
+func (ci *controlInstance) setupSocketHandlers() {
+	ss := this.controlSocketServer
 
-func Init() {
-	var config string
-	flag.StringVar(&config, "c", "control", "Configuration file")
-	flag.Parse()
-
-	viper.SetConfigName(config)
-	viper.AddConfigPath("../config")
-
-	if viper.ReadInConfig() != nil {
-		log.Fatal("(Configuration) Error while loading configuration")
-	}
-
-	http_server := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"]),
-		Handler: socketServer,
-	}
-	initializeRedis()
-	initializeRPC()
-	initializeDatabase()
-	initializeControl()
-
-	log.Printf("(Control) Control lifting up on %s:%d/socketIo", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"])
-	log.Fatal(http_server.ListenAndServe())
-
+	ss.On("connect", ConnectHandler)
+	ss.On("call_init", CallInitHandler)
 }

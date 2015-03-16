@@ -11,45 +11,6 @@ import (
 	"time"
 )
 
-func MessageHandler(ns *socketio.NameSpace, body string) {
-}
-
-func ContactHandler(ns *socketio.NameSpace, body string) {
-
-}
-
-func CallHandler(ns *socketio.NameSpace, body string) {
-
-}
-
-func NotificationHandler(ns *socketio.NameSpace, body string) {
-
-}
-
-func UserHandler(ns *socketio.NameSpace, body string) {
-
-}
-
-func SystemHandler(ns *socketio.NameSpace, body string) {
-
-}
-
-func BanHandler(ns *socketio.NameSpace, body string) {
-
-}
-
-func CallResultHandler(ns *socketio.NameSpace, body string) {
-
-}
-
-func CallStateHandler(ns *socketio.NameSpace, body string) {
-
-}
-
-func ClaimHandler(ns *socketio.NameSpace, body string) {
-
-}
-
 type APIRequest struct {
 	EventAction, Event string
 }
@@ -64,7 +25,7 @@ func ConnectHandler(ns *socketio.NameSpace) {
 func AuthorizationHandler(ns *socketio.NameSpace, token string) {
 	user := new(User)
 
-	err := _db.Find(&user, token).Error
+	err := this.db.Find(&user, token).Error
 	if err != nil {
 		log.Printf("(Authorization) DB Search error: %s", err)
 	}
@@ -75,7 +36,7 @@ func AuthorizationHandler(ns *socketio.NameSpace, token string) {
 	SocketsMap[ns] = int(user.ID)
 	UsersMap[user.ID][ns] = true
 	ns.Session.Values["uid"] = user.ID
-	_redis.HSet("formation:users", string(user.ID), _carrier.ID)
+	this.redis.HSet("formation:users", string(user.ID), this.id)
 	user.SetOnline()
 }
 
@@ -85,7 +46,7 @@ func DisconnectionHandler(ns *socketio.NameSpace) {
 	defer delete(SocketsMap, ns)
 	if user != nil {
 		delete(UsersMap[user.ID], ns)
-		_redis.HDel("formation:users", string(user.ID))
+		this.redis.HDel("formation:users", string(user.ID))
 		user.SetOffline()
 	}
 }

@@ -5,17 +5,23 @@ type UserCallRPCArguments struct {
 	Call Call
 }
 
+type UserCallStopArguments struct {
+	User           User
+	Call           Call
+	CallStopReason string
+}
+
 type UserRPCArguments struct {
 	User User
 }
 
-type UserRPC int
+type CarrierRPC int
 
-func (rpc *UserRPC) CallConnect(args *UserCallRPCArguments, err *error) error {
+func (rpc *CarrierRPC) CallConnect(args *UserCallRPCArguments, err *error) error {
 	return args.User.SendCallConnect(args.Call)
 }
 
-func (rpc *UserRPC) isUserOnline(args *UserRPCArguments, result *bool) error {
+func (rpc *CarrierRPC) isUserOnline(args *UserRPCArguments, result *bool) error {
 	if args.User.Online() {
 		*result = true
 	} else {
@@ -24,13 +30,19 @@ func (rpc *UserRPC) isUserOnline(args *UserRPCArguments, result *bool) error {
 	return nil
 }
 
-func (rpc *UserRPC) isUserInCall(args *UserRPCArguments, result *bool) error {
+func (rpc *CarrierRPC) isUserInCall(args *UserRPCArguments, result *bool) error {
 	if args.User.Online() {
 		*result = true
 	} else {
 		*result = false
 	}
 	return nil
+}
+
+func (rpc *CarrierRPC) CallStop(args *UserCallStopArguments, result *error) error {
+	*result = args.User.SendCallStop(args.Call, args.CallStopReason)
+	res := *result
+	return res
 }
 
 // func userOnline(user User) (bool, error) {
