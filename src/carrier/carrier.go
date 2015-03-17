@@ -89,6 +89,7 @@ func (ci *carrierInstance) setupSocketHandlers() {
 	ss.On("connect", ConnectHandler)
 	ss.On("authorize", AuthorizationHandler)
 	ss.On("disconnect", DisconnectionHandler)
+	ss.On("call_accept", CallAcceptHandler)
 }
 
 func (ci *carrierInstance) interConnect(id string) {

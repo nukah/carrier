@@ -21,7 +21,7 @@ func (u *User) Online() bool {
 func (u *User) SendCallConnect(call Call) error {
 	formatted_call := &callEvent{
 		Type:           "connect",
-		CallId:         u.ID,
+		CallId:         call.ID,
 		CallType:       call.Type,
 		CallStopReason: "",
 		Source:         call.Source.ID,
@@ -39,11 +39,59 @@ func (u *User) SendCallConnect(call Call) error {
 func (u *User) SendCallStop(call Call, reason string) error {
 	formatted_call := &callEvent{
 		Type:           "stop",
-		CallId:         u.ID,
+		CallId:         call.ID,
 		CallType:       call.Type,
 		CallStopReason: reason,
 		Source:         call.Source.ID,
 		Destination:    call.Destination.ID,
+	}
+
+	if sessions, err := FindSocketByUserId(u.ID); err == nil {
+		for session := range sessions {
+			go session.Emit("call", formatted_call.to_JSON())
+		}
+	}
+	return nil
+}
+
+func (u *User) SendCallFinish(call Call) error {
+	formatted_call := &callEvent{
+		Type:           "finish",
+		CallId:         call.ID,
+		CallType:       call.Type,
+		CallStopReason: "",
+		Source:         call.Source.ID,
+		Destination:    call.Destination.ID,
+	}
+
+	if sessions, err := FindSocketByUserId(u.ID); err == nil {
+		for session := range sessions {
+			go session.Emit("call", formatted_call.to_JSON())
+		}
+	}
+	return nil
+}
+
+func (u *User) SendCallAnswer(call Call, decision bool) error {
+	formatted_call := &callResultEvent{
+		Type:     "answer",
+		CallId:   call.ID,
+		Decision: decision,
+	}
+
+	if sessions, err := FindSocketByUserId(u.ID); err == nil {
+		for session := range sessions {
+			go session.Emit("call", formatted_call.to_JSON())
+		}
+	}
+	return nil
+}
+
+func (u *User) SendCallReveal(call Call, decision bool) error {
+	formatted_call := &callResultEvent{
+		Type:     "reveal",
+		CallId:   call.ID,
+		Decision: decision,
 	}
 
 	if sessions, err := FindSocketByUserId(u.ID); err == nil {

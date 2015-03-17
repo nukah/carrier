@@ -1,27 +1,33 @@
 package carrier
 
-type UserCallRPCArguments struct {
+type CarrierCallRPC struct {
 	User User
 	Call Call
 }
 
-type UserCallStopArguments struct {
-	User           User
-	Call           Call
-	CallStopReason string
+type CarrierCallStringRPC struct {
+	User  User
+	Call  Call
+	Value string
 }
 
-type UserRPCArguments struct {
+type CarrierCallBoolRPC struct {
+	User  User
+	Call  Call
+	Value bool
+}
+
+type CarrierUserRPC struct {
 	User User
 }
 
 type CarrierRPC int
 
-func (rpc *CarrierRPC) CallConnect(args *UserCallRPCArguments, err *error) error {
+func (rpc *CarrierRPC) CallConnect(args *CarrierCallRPC, err *error) error {
 	return args.User.SendCallConnect(args.Call)
 }
 
-func (rpc *CarrierRPC) isUserOnline(args *UserRPCArguments, result *bool) error {
+func (rpc *CarrierRPC) isUserOnline(args *CarrierUserRPC, result *bool) error {
 	if args.User.Online() {
 		*result = true
 	} else {
@@ -30,7 +36,7 @@ func (rpc *CarrierRPC) isUserOnline(args *UserRPCArguments, result *bool) error 
 	return nil
 }
 
-func (rpc *CarrierRPC) isUserInCall(args *UserRPCArguments, result *bool) error {
+func (rpc *CarrierRPC) isUserInCall(args *CarrierUserRPC, result *bool) error {
 	if args.User.Online() {
 		*result = true
 	} else {
@@ -39,8 +45,26 @@ func (rpc *CarrierRPC) isUserInCall(args *UserRPCArguments, result *bool) error 
 	return nil
 }
 
-func (rpc *CarrierRPC) CallStop(args *UserCallStopArguments, result *error) error {
-	*result = args.User.SendCallStop(args.Call, args.CallStopReason)
+func (rpc *CarrierRPC) CallStop(args *CarrierCallStringRPC, result *error) error {
+	*result = args.User.SendCallStop(args.Call, args.Value)
+	res := *result
+	return res
+}
+
+func (rpc *CarrierRPC) CallFinish(args *CarrierCallRPC, result *error) error {
+	*result = args.User.SendCallFinish(args.Call)
+	res := *result
+	return res
+}
+
+func (rpc *CarrierRPC) CallAnswer(args *CarrierCallBoolRPC, result *error) error {
+	*result = args.User.SendCallAnswer(args.Call, args.Value)
+	res := *result
+	return res
+}
+
+func (rpc *CarrierRPC) CallReveal(args *CarrierCallBoolRPC, result *error) error {
+	*result = args.User.SendCallReveal(args.Call, args.Value)
 	res := *result
 	return res
 }

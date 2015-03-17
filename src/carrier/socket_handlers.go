@@ -7,7 +7,6 @@ import (
 	_ "gopkg.in/vmihailenco/msgpack.v2"
 	"log"
 	_ "net/url"
-	_ "strings"
 	"time"
 )
 
@@ -49,4 +48,9 @@ func DisconnectionHandler(ns *socketio.NameSpace) {
 		this.redis.HDel("formation:users", string(user.ID))
 		user.SetOffline()
 	}
+}
+
+func CallAcceptHandler(ns *socketio.NameSpace, call_id string, decision bool) {
+	user, _ := FindUserBySocket(ns)
+	controlCallAccept(*user, call_id, decision)
 }
