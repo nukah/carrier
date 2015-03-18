@@ -1,7 +1,7 @@
 package control
 
 import (
-	"github.com/nukah/go-socket.io"
+	"github.com/googollee/go-socket.io"
 	"log"
 )
 
@@ -9,7 +9,7 @@ type APIRequest struct {
 	EventAction, Event string
 }
 
-func ConnectHandler(ns *socketio.NameSpace) {
+func ConnectHandler(ns *socketio.Socket) {
 	// time.AfterFunc(time.Second*10, func() {
 	// 	if ns.Session.Values["uid"] == nil {
 	// 		ns.CloseConnection()
@@ -17,7 +17,7 @@ func ConnectHandler(ns *socketio.NameSpace) {
 	// })
 }
 
-func CallInitHandler(ns *socketio.NameSpace, call_id string) {
+func CallInitHandler(ns *socketio.Socket, call_id string) {
 	call := new(Call)
 	call.Find(call_id)
 	this.calls[call_id] = call

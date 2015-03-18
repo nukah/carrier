@@ -3,7 +3,7 @@ package carrier
 import (
 	"flag"
 	"fmt"
-	"github.com/nukah/go-socket.io"
+	"github.com/googollee/go-socket.io"
 	"github.com/spf13/viper"
 	"github.com/twinj/uuid"
 	"gopkg.in/redis.v2"
@@ -21,8 +21,8 @@ const (
 )
 
 var (
-	SocketsMap = make(map[*socketio.NameSpace]int)
-	UsersMap   = make(map[int]map[*socketio.NameSpace]bool)
+	SocketsMap = make(map[socketio.Socket]int)
+	UsersMap   = make(map[int]map[socketio.Socket]bool)
 	this       = &carrierInstance{
 		id:           uuid.Formatter(uuid.NewV4(), uuid.Clean),
 		carrierFleet: make(map[string]*rpc.Client),
@@ -79,12 +79,12 @@ func Start() {
 	this.initSocket()
 	this.startRPC()
 
-	carriersOnline := this.redis.HKeys("carriers:formation").Val()
+	carriersOnline := this.redis.HKeys("formation:carriers").Val()
 	for _, id := range carriersOnline {
 		go this.interConnect(id)
 	}
 
-	this.redis.HSet("carriers:formation", this.id, fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], RPC_PORT))
+	this.redis.HSet("formation:carriers", this.id, fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], RPC_PORT))
 
 	c, err := rpc.DialHTTP("tcp", fmt.Sprintf("%s:%d", viper.GetStringMap("control")["ip"], viper.GetStringMap("control")["port"]))
 
@@ -97,12 +97,9 @@ func Start() {
 	handleFleet()
 	preparationForShutdown()
 
-	http_server := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"]),
-		Handler: this.carrierSocketServer,
-	}
+	http.Handle("/socket.io/", &this.carrierSocketServer)
 
-	log.Printf("(Carrier) %s lifting up on %s:%d/socketIo", this.id, viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"])
+	log.Printf("(Carrier) %s lifting up on %s:%d/socket.io", this.id, viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"])
 	log.Printf("(Carrier) RPC Interface: %s:%d", viper.GetStringMap("rpc")["ip"], viper.GetStringMap("rpc")["port"])
-	log.Fatal(http_server.ListenAndServe())
+	log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"]), nil))
 }

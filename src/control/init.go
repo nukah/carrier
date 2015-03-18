@@ -34,7 +34,7 @@ func Init() {
 	this.initSocket()
 	this.startRPC()
 
-	carriersOnline := this.redis.HGetAllMap("carriers:formation").Val()
+	carriersOnline := this.redis.HGetAllMap("formation:carriers").Val()
 	for id, host := range carriersOnline {
 		conn, err := rpc.DialHTTP("tcp", host)
 		if err != nil {
@@ -45,12 +45,8 @@ func Init() {
 		}
 	}
 
-	http_server := &http.Server{
-		Addr:    fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"]),
-		Handler: this.controlSocketServer,
-	}
+	http.Handle("/socket.io/", &this.controlSocketServer)
 
-	log.Printf("(Control) Control lifting up on %s:%d/socketIo", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"])
-	log.Fatal(http_server.ListenAndServe())
-
+	log.Printf("(Control) Control lifting up on %s:%d/socket.io/", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"])
+	log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"]), nil))
 }

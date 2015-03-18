@@ -29,7 +29,7 @@ type User struct {
 	Gender      int
 	DateOfBirth time.Time
 	BannedTo    time.Time
-	Real        bool
+	RealPerson  bool
 
 	CurrentProfile   Profile
 	CurrentProfileId sql.NullInt64
@@ -56,9 +56,9 @@ type Call struct {
 	AcceptedAt          time.Time
 	RejectedAt          time.Time
 	Type                string
-	Destination         User
+	Destination         User `sql:"-"`
 	DestinationID       int
 	SourceID            int
-	Source              User
+	Source              User `sql:"-"`
 	CallTimer           time.Timer
 }

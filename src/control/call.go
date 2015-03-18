@@ -41,12 +41,11 @@ func (c *Call) Finish(status int) {
 	}()
 	switch status {
 	case StatusFinished:
-		c.FinishedAt = time.Now()
+		this.db.Model(&c).Updates(Call{FinishedAt: time.Now()})
 	case StatusRejected:
-		c.RejectedAt = time.Now()
+		this.db.Model(&c).Updates(Call{RejectedAt: time.Now()})
 	}
-	c.Status = status
-	this.db.Save(&c)
+	this.db.Model(&c).Updates(Call{Status: status})
 	c.CallTimer.Stop()
 }
 

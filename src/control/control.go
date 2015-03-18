@@ -3,9 +3,9 @@ package control
 import (
 	_ "carrier"
 	"fmt"
+	"github.com/googollee/go-socket.io"
 	"github.com/jinzhu/gorm"
 	_ "github.com/lib/pq"
-	"github.com/nukah/go-socket.io"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 	"gopkg.in/redis.v2"
@@ -13,13 +13,14 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"time"
 )
 
 type controlInstance struct {
 	fleet               map[string]*rpc.Client
 	redis               *redis.Client
 	db                  *gorm.DB
-	controlSocketServer *socketio.SocketIOServer
+	controlSocketServer socketio.Server
 	calls               map[string]*Call
 }
 
@@ -80,16 +81,16 @@ func (ci *controlInstance) startRPC() {
 }
 
 func (ci *controlInstance) initSocket() {
-	transports := socketio.NewTransportManager()
-	transports.RegisterTransport("websocket")
+	server, err := socketio.NewServer(nil)
+	if err != nil {
+		log.Fatal("Socket server failed to initialized")
+	}
+	server.SetPingTimeout(time.Second * 60)
+	server.SetPingInterval(time.Second * 30)
+	server.SetMaxConnection(500)
 
-	socketconf := &socketio.Config{}
-	socketconf.Transports = transports
-	socketconf.ClosingTimeout = 50000
-	socketconf.HeartbeatTimeout = 10000
-
-	this.controlSocketServer = socketio.NewSocketIOServer(socketconf)
-	this.setupSocketHandlers()
+	ci.controlSocketServer = *server
+	ci.setupSocketHandlers()
 }
 
 func (ci *controlInstance) setupSocketHandlers() {
