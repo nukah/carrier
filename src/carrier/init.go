@@ -42,8 +42,8 @@ func preparationForShutdown() {
 
 func handleFleet() {
 	fleet := this.redis.PubSub()
-	this.redis.Publish("fleet", this.id)
-	err := fleet.Subscribe("fleet")
+	this.redis.Publish(REDIS_FLEET_CHAT_KEY, this.id)
+	err := fleet.Subscribe(REDIS_FLEET_CHAT_KEY)
 	if err != nil {
 		log.Printf("(Fleet) Subscribe to pubsub failed: %s", err)
 	}
@@ -79,20 +79,20 @@ func Start() {
 	this.initSocket()
 	this.startRPC()
 
-	carriersOnline := this.redis.HKeys("formation:carriers").Val()
+	carriersOnline := this.redis.HKeys(REDIS_CARRIERS_KEY).Val()
 	for _, id := range carriersOnline {
 		go this.interConnect(id)
 	}
 
-	this.redis.HSet("formation:carriers", this.id, fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], RPC_PORT))
+	// Control tower RPC connect
 
 	c, err := rpc.DialHTTP("tcp", fmt.Sprintf("%s:%d", viper.GetStringMap("control")["ip"], viper.GetStringMap("control")["port"]))
-
 	control = c
 
 	if err != nil {
 		log.Fatal(fmt.Sprintf("(Carrier) Can not connect to control tower @ %s. Error: %s", viper.GetStringMap("control")["ip"], err))
 	}
+	log.Println("(Carrier) Control tower connection established")
 
 	handleFleet()
 	preparationForShutdown()
@@ -100,6 +100,5 @@ func Start() {
 	http.Handle("/socket.io/", &this.carrierSocketServer)
 
 	log.Printf("(Carrier) %s lifting up on %s:%d/socket.io", this.id, viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"])
-	log.Printf("(Carrier) RPC Interface: %s:%d", viper.GetStringMap("rpc")["ip"], viper.GetStringMap("rpc")["port"])
 	log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], viper.GetStringMap("sockets")["port"]), nil))
 }

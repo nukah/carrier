@@ -60,5 +60,5 @@ type Call struct {
 	DestinationID       int
 	SourceID            int
 	Source              User `sql:"-"`
-	CallTimer           time.Timer
+	callTimer           time.Timer
 }

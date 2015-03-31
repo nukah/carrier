@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	RevealTimeout      = 30
-	AnswerTimeout      = 30
-	CallDuration       = 180
-	CallInitTimeout    = 40
+	RevealTimeout   = 30
+	AnswerTimeout   = 30
+	CallDuration    = 180
+	CallInitTimeout = 40
+
 	StatusCalling      = 1
 	StatusActive       = 2
 	StatusDisconnected = 8
@@ -33,10 +34,69 @@ func (c *Call) callLimitReached() bool {
 	return false
 }
 
+func (c *Call) Init() {
+	if c.callLimitReached() {
+		makeCallStop(c.Source, *c, "call_limit")
+	}
+
+	if !userOnline(c.Destination) {
+		makeCallStop(c.Source, *c, "destination_offline")
+		c.Finish(StatusFailed)
+		return
+	}
+
+	if !userOnline(c.Source) {
+		makeCallStop(c.Source, *c, "source_offline")
+		c.Finish(StatusFailed)
+		return
+	}
+
+	if userInCall(c.Destination) {
+		makeCallStop(c.Source, *c, "destination_busy")
+		c.Finish(StatusFailed)
+		return
+	}
+
+	this.calls[c.ID] = c
+
+	pipeline := this.redis.Pipeline()
+
+	pipeline.HSet(c.RedisKey(), "source_answer", "")
+	pipeline.HSet(c.RedisKey(), "destination_answer", "")
+
+	if c.Type != "Call::Deferred" {
+		pipeline.HSet(c.RedisKey(), "source_accept", "true")
+	} else {
+		pipeline.HSet(c.RedisKey(), "source_accept", "")
+	}
+
+	pipeline.HSet(c.RedisKey(), "destination_accept", "")
+	pipeline.HSet(c.RedisKey(), "source_reveal", "")
+	pipeline.HSet(c.RedisKey(), "destination_reveal", "")
+	pipeline.Expire(c.RedisKey(), time.Second*CallDuration*2)
+	pipeline.Exec()
+
+	c.Connect()
+}
+
+func (c *Call) Connect() error {
+	makeCallConnect(c.Source, *c)
+	makeCallConnect(c.Destination, *c)
+	c.callTimer = *time.AfterFunc(time.Second*CallInitTimeout, func() {
+		callInfo := this.redis.HGetAllMap(c.RedisKey()).Val()
+		if callInfo["source_accept"] == "" || callInfo["destination_accept"] == "" {
+			makeCallStop(c.Source, *c, "destination_timeout")
+			c.Finish(StatusSkipped)
+			return
+		}
+	})
+	return nil
+}
+
 func (c *Call) Finish(status int) {
-	defer delete(this.calls, string(c.ID))
 	defer func() {
 		recover()
+		delete(this.calls, c.ID)
 		log.Printf("(Call) Finishing call %d with status (%d)", c.ID, status)
 	}()
 	switch status {
@@ -45,53 +105,8 @@ func (c *Call) Finish(status int) {
 	case StatusRejected:
 		this.db.Model(&c).Updates(Call{RejectedAt: time.Now()})
 	}
+	c.callTimer.Stop()
 	this.db.Model(&c).Updates(Call{Status: status})
-	c.CallTimer.Stop()
-}
-
-func (c *Call) Init() error {
-	if c.callLimitReached() {
-		makeCallStop(c.Source, *c, "call_limit")
-	}
-
-	if !userOnline(c.Destination) {
-		makeCallStop(c.Source, *c, "destination_offline")
-		c.Finish(StatusFailed)
-		return nil
-	}
-
-	if !userOnline(c.Source) {
-		makeCallStop(c.Source, *c, "source_offline")
-		c.Finish(StatusFailed)
-		return nil
-	}
-
-	if userInCall(c.Destination) {
-		makeCallStop(c.Source, *c, "destination_busy")
-		c.Finish(StatusFailed)
-		return nil
-	}
-
-	c.Connect()
-
-	return nil
-}
-
-func (c *Call) Connect() error {
-	go func() {
-		makeCallConnect(c.Source, *c)
-		makeCallConnect(c.Destination, *c)
-
-		c.CallTimer = *time.AfterFunc(time.Second*CallInitTimeout, func() {
-			callInfo := this.redis.HGetAllMap(c.RedisKey()).Val()
-			if callInfo["source_accept"] == "" || callInfo["destination_accept"] == "" {
-				makeCallStop(c.Source, *c, "destination_timeout")
-				c.Finish(StatusSkipped)
-				return
-			}
-		})
-	}()
-	return nil
 }
 
 func (c *Call) Accept(user_id int, decision bool) error {
@@ -110,38 +125,31 @@ func (c *Call) Accept(user_id int, decision bool) error {
 	}
 	this.redis.HSet(c.RedisKey(), role, strconv.FormatBool(decision))
 
-	pipeline := this.redis.Pipeline()
+	sourceAccept := this.redis.HGet(c.RedisKey(), "source_accept").Val()
+	destinationAccept := this.redis.HGet(c.RedisKey(), "destination_accept").Val()
 
-	sourceAccept := pipeline.HGet(c.RedisKey(), "source_accept").Val()
-	destinationAccept := pipeline.HGet(c.RedisKey(), "destination_accept").Val()
-
-	pipeline.Exec()
 	if sourceAccept == "true" && destinationAccept == "true" {
-		go func() {
-			makeCallStart(c.Source, *c)
-			makeCallStart(c.Destination, *c)
-			c.Start()
-		}()
+		c.Start()
 		return nil
 	}
 
 	if sourceAccept == "false" || destinationAccept == "false" {
-		go func() {
-			makeCallStop(c.Source, *c, "call_rejected")
-			makeCallStop(c.Destination, *c, "call_rejected")
-			c.Finish(StatusRejected)
-		}()
+		makeCallStop(c.Source, *c, "call_rejected")
+		makeCallStop(c.Destination, *c, "call_rejected")
+		c.Finish(StatusRejected)
 		return nil
 	}
 	return nil
 }
 
 func (c *Call) Start() error {
+	makeCallStart(c.Source, *c)
+	makeCallStart(c.Destination, *c)
 	c.Status = StatusActive
 	c.AcceptedAt = time.Now()
 	this.db.Save(&c)
 
-	c.CallTimer = *time.AfterFunc(time.Second*CallDuration, func() {
+	c.callTimer = *time.AfterFunc(time.Second*CallDuration, func() {
 		c.Finish(StatusFinished)
 		makeCallFinish(c.Source, *c)
 		makeCallFinish(c.Destination, *c)
@@ -154,8 +162,25 @@ func (c *Call) Start() error {
 	return nil
 }
 
+func (c *Call) Stop(user User) {
+	var reason string
+	switch user.ID {
+	case c.SourceID:
+		reason = "source_cancelled"
+	case c.DestinationID:
+		reason = "destination_cancelled"
+	}
+	makeCallStop(c.Source, *c, reason)
+	makeCallStop(c.Destination, *c, reason)
+	c.Finish(StatusEscaped)
+}
+
 func (c *Call) StartReveal() error {
-	c.CallTimer = *time.AfterFunc(time.Second*RevealTimeout, func() {
+	makeCallAftermath(c.Source, *c, "call_reveal", "start")
+	makeCallAftermath(c.Destination, *c, "call_reveal", "start")
+	c.callTimer = *time.AfterFunc(time.Second*RevealTimeout, func() {
+		makeCallAftermath(c.Source, *c, "call_reveal", "finish")
+		makeCallAftermath(c.Destination, *c, "call_reveal", "finish")
 		pipeline := this.redis.Pipeline()
 
 		sourceReveal := pipeline.HGet(c.RedisKey(), "source_reveal").Val()
@@ -164,25 +189,26 @@ func (c *Call) StartReveal() error {
 		pipeline.Exec()
 
 		if (sourceReveal == "" && destinationReveal == "") || (sourceReveal == "false" || destinationReveal == "false") {
-			go func() {
-				makeCallReveal(c.Source, *c, false)
-				makeCallReveal(c.Destination, *c, false)
-			}()
+			makeCallReveal(c.Source, *c, false)
+			makeCallReveal(c.Destination, *c, false)
 		}
 
 		if sourceReveal == "true" && destinationReveal == "true" {
-			go func() {
-				makeCallReveal(c.Source, *c, true)
-				makeCallReveal(c.Destination, *c, true)
-				c.StartAnswer()
-			}()
+			makeCallReveal(c.Source, *c, true)
+			makeCallReveal(c.Destination, *c, true)
+			c.StartAnswer()
 		}
 	})
 	return nil
 }
 
 func (c *Call) StartAnswer() error {
-	c.CallTimer = *time.AfterFunc(time.Second*AnswerTimeout, func() {
+	makeCallAftermath(c.Source, *c, "call_answer", "start")
+	makeCallAftermath(c.Destination, *c, "call_answer", "start")
+	c.callTimer = *time.AfterFunc(time.Second*AnswerTimeout, func() {
+		makeCallAftermath(c.Source, *c, "call_answer", "finish")
+		makeCallAftermath(c.Destination, *c, "call_answer", "finish")
+
 		pipeline := this.redis.Pipeline()
 
 		sourceAnswer := pipeline.HGet(c.RedisKey(), "source_answer").Val()
@@ -191,17 +217,13 @@ func (c *Call) StartAnswer() error {
 		pipeline.Exec()
 
 		if (sourceAnswer == "" && destinationAnswer == "") || (sourceAnswer == "false" || destinationAnswer == "false") {
-			go func() {
-				makeCallAnswer(c.Source, *c, false)
-				makeCallAnswer(c.Destination, *c, false)
-			}()
+			makeCallAnswer(c.Source, *c, false)
+			makeCallAnswer(c.Destination, *c, false)
 		}
 
 		if sourceAnswer == "true" && destinationAnswer == "true" {
-			go func() {
-				makeCallAnswer(c.Source, *c, true)
-				makeCallAnswer(c.Destination, *c, true)
-			}()
+			makeCallAnswer(c.Source, *c, true)
+			makeCallAnswer(c.Destination, *c, true)
 		}
 	})
 	return nil

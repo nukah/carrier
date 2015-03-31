@@ -1,7 +1,7 @@
 package control
 
 import (
-	_ "carrier"
+	"carrier"
 	"fmt"
 	"github.com/googollee/go-socket.io"
 	"github.com/jinzhu/gorm"
@@ -21,7 +21,7 @@ type controlInstance struct {
 	redis               *redis.Client
 	db                  *gorm.DB
 	controlSocketServer socketio.Server
-	calls               map[string]*Call
+	calls               map[int]*Call
 }
 
 func (ci *controlInstance) initDb() {
@@ -38,10 +38,10 @@ func (ci *controlInstance) initDb() {
 		dbconf["username"],
 	))
 
-	this.db = &dbconn
-	this.db.LogMode(true)
+	ci.db = &dbconn
+	ci.db.LogMode(true)
 
-	if this.db.DB().Ping() != nil {
+	if ci.db.DB().Ping() != nil {
 		log.Fatal(fmt.Sprintf("(Configuration) Error connecting to database."))
 	}
 }
@@ -57,11 +57,39 @@ func (ci *controlInstance) initRedis() {
 		DB:       int64(cast.ToInt(redisconf["database"])),
 	}
 
-	this.redis = redis.NewTCPClient(redisopt)
+	ci.redis = redis.NewTCPClient(redisopt)
 
-	if _, err := this.redis.Ping().Result(); err != nil {
+	if _, err := ci.redis.Ping().Result(); err != nil {
 		log.Fatal(fmt.Sprintf("Error connecting to redis (%s).", err))
 	}
+}
+
+func (ci *controlInstance) handleFleet() {
+	fleet := ci.redis.PubSub()
+	err := fleet.Subscribe(carrier.REDIS_FLEET_CHAT_KEY)
+	if err != nil {
+		log.Printf("(Fleet) Subscribe to pubsub failed: %s", err)
+	}
+	go func() {
+		for {
+			in, err := fleet.Receive()
+			if err != nil {
+				log.Printf("(Fleet) pubsub error: %s", err)
+			}
+			switch t := in.(type) {
+			case *redis.Message:
+				carrierHost := ci.redis.HGet(carrier.REDIS_CARRIERS_KEY, t.Payload).Val()
+				conn, err := rpc.DialHTTP("tcp", carrierHost)
+				if err != nil {
+					log.Printf("(Fleet) Error connecting to carrier(%s): %s.", t.Payload, err)
+				} else {
+					log.Printf("(Fleet) New carrier is on uplink: %s", t.Payload)
+					ci.fleet[t.Payload] = conn
+				}
+			}
+			time.Sleep(time.Second)
+		}
+	}()
 }
 
 func (ci *controlInstance) startRPC() {
@@ -75,7 +103,6 @@ func (ci *controlInstance) startRPC() {
 		log.Printf("(Control) Error while initializing RPC: %s", err)
 	}
 	go func() {
-		log.Printf("(Control) RPC Interface: %s:%d", viper.GetStringMap("rpc")["ip"], viper.GetStringMap("rpc")["port"])
 		log.Fatal(http.Serve(rpcHandler, nil))
 	}()
 }
@@ -94,8 +121,9 @@ func (ci *controlInstance) initSocket() {
 }
 
 func (ci *controlInstance) setupSocketHandlers() {
-	ss := this.controlSocketServer
+	ci.controlSocketServer.On("connection", func(ss socketio.Socket) {
+		ConnectHandler(ss)
 
-	ss.On("connect", ConnectHandler)
-	ss.On("call_init", CallInitHandler)
+		ss.On("call_init", CallInitHandler)
+	})
 }

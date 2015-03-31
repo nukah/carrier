@@ -7,6 +7,7 @@ import (
 	_ "gopkg.in/vmihailenco/msgpack.v2"
 	"log"
 	_ "net/url"
+	"strconv"
 	"time"
 )
 
@@ -16,41 +17,53 @@ type APIRequest struct {
 
 func ConnectHandler(ns socketio.Socket) {
 	time.AfterFunc(time.Second*10, func() {
-		checkSocketAuthorization(ns)
+		if result := checkSocketAuthorization(ns); result != "" {
+			log.Println(result)
+		}
 	})
-	ns.Emit("test")
-	log.Printf("(Connect) New client(%s) connected", ns.Id())
 }
 
 func AuthorizationHandler(ns socketio.Socket, token string) {
 	user := new(User)
-	log.Printf("Test")
+
 	err := this.db.Find(&user, token).Error
 	if err != nil {
 		log.Printf("(Authorization) DB Search error: %s", err)
+		return
 	}
-	if _, found := UsersMap[user.ID]; !found {
-		UsersMap[user.ID] = make(map[socketio.Socket]bool)
-	}
-
-	SocketsMap[ns] = int(user.ID)
-	UsersMap[user.ID][ns] = true
-	this.redis.HSet("formation:users", string(user.ID), this.id)
-	user.SetOnline()
+	setSocketAuthorization(ns, user)
 }
 
 func DisconnectionHandler(ns socketio.Socket) {
-	user, _ := FindUserBySocket(ns)
-
-	defer delete(SocketsMap, ns)
-	if user != nil {
-		delete(UsersMap[user.ID], ns)
-		this.redis.HDel("formation:users", string(user.ID))
-		user.SetOffline()
+	user, err := FindUserBySocket(ns)
+	if err == nil && user != nil && user.InCall() {
+		var callId int
+		//this.db.Table("calls").Where("source_id = ? or destination_id = ? and status = ?", user.ID, user.ID, 2)
+		controlCallStop(*user)
+	}
+	if result := removeSocketAuthorization(ns); result != "" {
+		log.Println(result)
 	}
 }
 
-func CallAcceptHandler(ns socketio.Socket, call_id string, decision bool) {
+func CallAcceptHandler(ns socketio.Socket, call_id string, accept string) {
 	user, _ := FindUserBySocket(ns)
-	controlCallAccept(*user, call_id, decision)
+	var decision = false
+	switch accept {
+	case "true":
+		decision = true
+	}
+	callId, _ := strconv.Atoi(call_id)
+
+	if result := controlCallAccept(*user, callId, decision); result != nil {
+		log.Println("CallAccept error: ", result)
+	}
+}
+
+func CallStopHandler(ns socketio.Socket, call_id string) {
+	user, _ = FindUserBySocket(ns)
+	callId, _ = strconv.Atoi(call_id)
+	if result := controlCallStop(*user, callId); result != nil {
+		log.Println("CallStop error: ", result)
+	}
 }

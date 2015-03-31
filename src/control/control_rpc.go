@@ -2,20 +2,43 @@ package control
 
 type ControlCallAcceptRPC struct {
 	User     User
-	CallId   string
+	CallId   int
 	Decision bool
+}
+
+type ControlCallStopRPC struct {
+	User   User
+	CallId int
 }
 
 type ControlRPC int
 
-func (control *ControlRPC) AcceptCall(args *ControlCallAcceptRPC, result *error) error {
-	call := new(Call)
+func (control *ControlRPC) AcceptCall(args *ControlCallAcceptRPC, result *bool) error {
+	call := this.calls[args.CallId]
 
-	if err := call.Find(args.CallId); err != nil {
-		*result = err
+	if call == nil {
+		*result = false
 	}
+
 	if err := call.Accept(args.User.ID, args.Decision); err != nil {
-		*result = err
+		*result = false
+	} else {
+		*result = true
+	}
+	return nil
+}
+
+func (control *ControlRPC) StopCall(args *ControlCallAcceptRPC, result *bool) error {
+	call := this.calls[args.CallId]
+
+	if call == nil {
+		*result = false
+	}
+
+	if err := call.Stop(args.User.ID); err != nil {
+		*result = false
+	} else {
+		*result = true
 	}
 	return nil
 }

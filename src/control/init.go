@@ -13,7 +13,7 @@ import (
 var (
 	this = &controlInstance{
 		fleet: make(map[string]*rpc.Client),
-		calls: make(map[string]*Call),
+		calls: make(map[int]*Call),
 	}
 )
 
@@ -33,6 +33,7 @@ func Init() {
 	this.initRedis()
 	this.initSocket()
 	this.startRPC()
+	this.handleFleet()
 
 	carriersOnline := this.redis.HGetAllMap("formation:carriers").Val()
 	for id, host := range carriersOnline {
@@ -40,7 +41,7 @@ func Init() {
 		if err != nil {
 			log.Printf("(Control) Error connecting to carrier(%s): %s.", host, err)
 		} else {
-			log.Printf("(Fleet) Communication with carrier(%s)@(%s) established.", id, host)
+			log.Printf("(Formation) Communication with carrier(%s)@(%s) established.", id, host)
 			this.fleet[id] = conn
 		}
 	}

@@ -16,6 +16,13 @@ import (
 	"time"
 )
 
+const (
+	REDIS_USER_SOCKET_SESSION_KEY = "formation:users"
+	REDIS_USER_CARRIER_KEY        = "users:carrier:session"
+	REDIS_FLEET_CHAT_KEY          = "fleet"
+	REDIS_CARRIERS_KEY            = "formation:carriers"
+)
+
 type carrierInstance struct {
 	id                  string
 	carrierFleet        map[string]*rpc.Client
@@ -27,6 +34,13 @@ type carrierInstance struct {
 
 func (ci *carrierInstance) shutDown() {
 	ci.redis.HDel("formation:carriers", ci.id)
+	for client := range SocketsMap {
+		go func() {
+			if res := removeSocketAuthorization(client); res != "" {
+				log.Println(res)
+			}
+		}()
+	}
 	ci.db.Close()
 	ci.redis.Close()
 	os.Exit(1)
@@ -47,6 +61,7 @@ func (ci *carrierInstance) initDb() {
 	))
 
 	ci.db = &dbconn
+	ci.db.LogMode(true)
 
 	if ci.db.DB().Ping() != nil {
 		log.Fatal(fmt.Sprintf("(Configuration) Error connecting to database."))
@@ -88,20 +103,21 @@ func (ci *carrierInstance) initSocket() {
 func (ci *carrierInstance) setupSocketHandlers() {
 	this.carrierSocketServer.On("connection", func(ss socketio.Socket) {
 		ConnectHandler(ss)
+
 		ss.On("authorize", AuthorizationHandler)
 		ss.On("disconnect", DisconnectionHandler)
 		ss.On("call_accept", CallAcceptHandler)
+		ss.On("call_stop", CallStopHandler)
 	})
 }
 
 func (ci *carrierInstance) interConnect(id string) {
-	log.Printf("(Fleet) Adding new server to pool(%s)", id)
-	carrierHost := ci.redis.HGet("formation:carriers", id).Val()
-	if carrierHost != fmt.Sprintf("%s:%d", viper.GetStringMap("sockets")["ip"], RPC_PORT) {
+	carrierHost := ci.redis.HGet(REDIS_CARRIERS_KEY, id).Val()
+	if carrierHost != fmt.Sprintf("%s:%d", viper.GetStringMap("rpc")["ip"], viper.GetStringMap("rpc")["port"]) {
 		conn, err := rpc.DialHTTP("tcp", carrierHost)
 		if err != nil {
 			log.Printf("(Formation) Error connecting to carrier(%s): %s. Removing invalid carrier from formation.", carrierHost, err)
-			ci.redis.HDel("formation:carriers", id)
+			ci.redis.HDel(REDIS_CARRIERS_KEY, id)
 		} else {
 			log.Printf("(Formation) Communication with carrier(%s)@(%s) established.", id, carrierHost)
 			ci.carrierFleet[id] = conn
@@ -118,6 +134,7 @@ func (ci *carrierInstance) startRPC() {
 	if err != nil {
 		log.Printf("(Formation) Error while initializing listener: %s", err)
 	}
+	this.redis.HSet("formation:carriers", this.id, fmt.Sprintf("%s:%d", viper.GetStringMap("rpc")["ip"], viper.GetStringMap("rpc")["port"]))
 	go func() {
 		log.Fatal(http.Serve(rpcHandler, nil))
 	}()
