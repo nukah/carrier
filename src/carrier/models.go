@@ -62,3 +62,13 @@ type Call struct {
 	Source              User
 	callTimer           time.Timer
 }
+
+type Message struct {
+	Type        string `json:"type"`
+	Source      User
+	Destination User
+	Text        string `json:"text"`
+	Action      string `json:"action"`
+	Call        Call
+	CreatedAt   time.Time `json:"created_at"`
+}

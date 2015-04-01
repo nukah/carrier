@@ -56,6 +56,9 @@ func (c *Call) Init() {
 		c.Finish(StatusFailed)
 		return
 	}
+	defer this.mutex.Unlock()
+
+	this.mutex.Lock()
 
 	this.calls[c.ID] = c
 
@@ -96,8 +99,10 @@ func (c *Call) Connect() error {
 func (c *Call) Finish(status int) {
 	defer func() {
 		recover()
+		this.mutex.Lock()
 		delete(this.calls, c.ID)
 		log.Printf("(Call) Finishing call %d with status (%d)", c.ID, status)
+		this.mutex.Unlock()
 	}()
 	switch status {
 	case StatusFinished:
@@ -162,17 +167,30 @@ func (c *Call) Start() error {
 	return nil
 }
 
-func (c *Call) Stop(user User) {
+func (c *Call) Stop(user User) error {
 	var reason string
-	switch user.ID {
-	case c.SourceID:
-		reason = "source_cancelled"
-	case c.DestinationID:
-		reason = "destination_cancelled"
+	switch c.Status {
+	case StatusCalling:
+		defer c.Finish(StatusEscaped)
+		switch user.ID {
+		case c.SourceID:
+			reason = "source_cancelled"
+		case c.DestinationID:
+			reason = "destination_cancelled"
+		}
+	case StatusActive:
+		defer c.Finish(StatusDisconnected)
+		switch user.ID {
+		case c.SourceID:
+			reason = "source_disconnected"
+		case c.DestinationID:
+			reason = "destination_disconnected"
+		}
 	}
+
 	makeCallStop(c.Source, *c, reason)
 	makeCallStop(c.Destination, *c, reason)
-	c.Finish(StatusEscaped)
+	return nil
 }
 
 func (c *Call) StartReveal() error {

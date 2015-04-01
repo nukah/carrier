@@ -31,7 +31,7 @@ func controlCallAccept(user User, call_id int, decision bool) error {
 	return nil
 }
 
-func controlCallStop(user User, call_id int) error {
+func controlCallCancel(user User, call_id int) error {
 	var result bool
 	var callChan = make(chan *rpc.Call, 1)
 

@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"sync"
 	"time"
 )
 
@@ -22,6 +23,7 @@ type controlInstance struct {
 	db                  *gorm.DB
 	controlSocketServer socketio.Server
 	calls               map[int]*Call
+	mutex               sync.RWMutex
 }
 
 func (ci *controlInstance) initDb() {

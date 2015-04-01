@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -30,16 +31,15 @@ type carrierInstance struct {
 	carrierSocketServer socketio.Server
 	redis               *redis.Client
 	db                  *gorm.DB
+	mutex               sync.RWMutex
 }
 
 func (ci *carrierInstance) shutDown() {
 	ci.redis.HDel("formation:carriers", ci.id)
 	for client := range SocketsMap {
-		go func() {
-			if res := removeSocketAuthorization(client); res != "" {
-				log.Println(res)
-			}
-		}()
+		if result := removeSocketAuthorization(client); result != nil {
+			log.Println(result)
+		}
 	}
 	ci.db.Close()
 	ci.redis.Close()
@@ -105,9 +105,10 @@ func (ci *carrierInstance) setupSocketHandlers() {
 		ConnectHandler(ss)
 
 		ss.On("authorize", AuthorizationHandler)
-		ss.On("disconnect", DisconnectionHandler)
+		ss.On("disconnection", DisconnectionHandler)
 		ss.On("call_accept", CallAcceptHandler)
-		ss.On("call_stop", CallStopHandler)
+		ss.On("call_cancel", CallCancelHandler)
+		ss.On("user_message", MessageHandler)
 	})
 }
 

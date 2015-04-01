@@ -28,14 +28,14 @@ func (control *ControlRPC) AcceptCall(args *ControlCallAcceptRPC, result *bool) 
 	return nil
 }
 
-func (control *ControlRPC) StopCall(args *ControlCallAcceptRPC, result *bool) error {
+func (control *ControlRPC) StopCall(args *ControlCallStopRPC, result *bool) error {
 	call := this.calls[args.CallId]
 
 	if call == nil {
 		*result = false
 	}
 
-	if err := call.Stop(args.User.ID); err != nil {
+	if err := call.Stop(args.User); err != nil {
 		*result = false
 	} else {
 		*result = true

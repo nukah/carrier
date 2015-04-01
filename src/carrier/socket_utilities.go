@@ -6,17 +6,17 @@ import (
 	"github.com/googollee/go-socket.io"
 )
 
-func checkSocketAuthorization(ns socketio.Socket) string {
+func checkSocketAuthorization(ns socketio.Socket) {
 	if socketSession := this.redis.HGet(REDIS_USER_CARRIER_KEY, ns.Id()).Val(); socketSession == "" {
 		ns.Emit("disconnect")
-		return fmt.Sprintf("(Carrier) Disconnecting session %s due to auth timeout", ns.Id())
 	}
-	return ""
 }
 
 func setSocketAuthorization(ns socketio.Socket, user *User) {
 	defer user.SetOnline()
+	defer this.mutex.Unlock()
 
+	this.mutex.Lock()
 	uid := string(user.ID)
 
 	pipeline := this.redis.Pipeline()
@@ -33,11 +33,13 @@ func setSocketAuthorization(ns socketio.Socket, user *User) {
 	UsersMap[user.ID][ns] = true
 }
 
-func removeSocketAuthorization(ns socketio.Socket) string {
+func removeSocketAuthorization(ns socketio.Socket) error {
 	user, _ := FindUserBySocket(ns)
 	defer delete(SocketsMap, ns)
+	defer this.mutex.Unlock()
 
-	if user != nil {
+	this.mutex.Lock()
+	if user.ID != 0 {
 		defer delete(UsersMap[user.ID], ns)
 		defer user.SetOffline()
 
@@ -48,10 +50,10 @@ func removeSocketAuthorization(ns socketio.Socket) string {
 
 		_, err := pipeline.Exec()
 		if err != nil {
-			return fmt.Sprintf("(Carrier) Unauthorizing user %d unsuccessful on session %s: %s", user.ID, ns.Id(), err)
+			return errors.New(fmt.Sprintf("(Carrier) Unauthorizing user %d unsuccessful on session %s: %s", user.ID, ns.Id(), err))
 		}
 	}
-	return ""
+	return nil
 }
 
 func FindUserBySocket(ns socketio.Socket) (*User, error) {

@@ -1,8 +1,8 @@
 package carrier
 
 import (
-	_ "bytes"
 	_ "encoding/base64"
+	"encoding/json"
 	"github.com/googollee/go-socket.io"
 	_ "gopkg.in/vmihailenco/msgpack.v2"
 	"log"
@@ -17,9 +17,7 @@ type APIRequest struct {
 
 func ConnectHandler(ns socketio.Socket) {
 	time.AfterFunc(time.Second*10, func() {
-		if result := checkSocketAuthorization(ns); result != "" {
-			log.Println(result)
-		}
+		checkSocketAuthorization(ns)
 	})
 }
 
@@ -36,12 +34,14 @@ func AuthorizationHandler(ns socketio.Socket, token string) {
 
 func DisconnectionHandler(ns socketio.Socket) {
 	user, err := FindUserBySocket(ns)
-	if err == nil && user != nil && user.InCall() {
+	if err == nil && user.ID != 0 && user.InCall() {
 		var callId int
-		//this.db.Table("calls").Where("source_id = ? or destination_id = ? and status = ?", user.ID, user.ID, 2)
-		controlCallStop(*user)
+		this.db.Table("calls").Where("source_id = ? or destination_id = ? and status = ?", user.ID, user.ID, 2).Select("id").Row().Scan(&callId)
+		if result := controlCallCancel(*user, callId); result != nil {
+			log.Println("CallStop error: ", result)
+		}
 	}
-	if result := removeSocketAuthorization(ns); result != "" {
+	if result := removeSocketAuthorization(ns); result != nil {
 		log.Println(result)
 	}
 }
@@ -60,10 +60,20 @@ func CallAcceptHandler(ns socketio.Socket, call_id string, accept string) {
 	}
 }
 
-func CallStopHandler(ns socketio.Socket, call_id string) {
-	user, _ = FindUserBySocket(ns)
-	callId, _ = strconv.Atoi(call_id)
-	if result := controlCallStop(*user, callId); result != nil {
+func CallCancelHandler(ns socketio.Socket, call_id string) {
+	user, _ := FindUserBySocket(ns)
+	callId, _ := strconv.Atoi(call_id)
+	if result := controlCallCancel(*user, callId); result != nil {
 		log.Println("CallStop error: ", result)
 	}
+}
+
+func MessageHandler(ns socketio.Socket, messageJson string) {
+	//user, _ := FindUserBySocket(ns)
+	log.Println("Message handler: ", messageJson)
+	var message Message
+	if err := json.Unmarshal([]byte(messageJson), &message); err != nil {
+		log.Println("Error ", err)
+	}
+	log.Println("Message: ", message)
 }
