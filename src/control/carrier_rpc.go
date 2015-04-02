@@ -33,6 +33,11 @@ type CarrierUserRPC struct {
 	User User
 }
 
+type CarrierMessageRPC struct {
+	Destination User
+	Message     Message
+}
+
 func userOnline(user User) bool {
 	var result bool
 	var callChan = make(chan *rpc.Call, 1)
@@ -173,6 +178,22 @@ func makeCallReveal(user User, call Call, decision bool) {
 	err := <-callChan
 	if err.Error != nil {
 		log.Println("(RPC) CallReveal: ", err.Error)
+	}
+	return
+}
+
+func makeSendMessage(user User, message Message) {
+	var result error
+	var callChan = make(chan *rpc.Call, 1)
+	carrierId := this.redis.HGet("formation:users", string(user.ID)).Val()
+	if carrierId == "" {
+		log.Printf("(RPC) (User(%d) Message)  Carrier ID not retrieved", user.ID)
+		return
+	}
+	this.fleet[carrierId].Go("CarrierRPC.SendMessage", &CarrierMessageRPC{user, message}, &result, callChan)
+	err := <-callChan
+	if err.Error != nil {
+		log.Println("(RPC) SendMessage: ", err.Error)
 	}
 	return
 }

@@ -21,7 +21,7 @@ func (u *User) Online() bool {
 }
 
 func (u *User) SendCallConnect(call Call) error {
-	formatted_call := &callEvent{
+	formattedCall := &callEvent{
 		Type:           "connect",
 		CallId:         call.ID,
 		CallType:       call.Type,
@@ -37,13 +37,13 @@ func (u *User) SendCallConnect(call Call) error {
 		return errors.New(fmt.Sprintf("User %d not found in any session", u.ID))
 	}
 	for session := range sessions {
-		session.Emit("call", formatted_call)
+		session.Emit("call", formattedCall)
 	}
 	return nil
 }
 
 func (u *User) SendCallStop(call Call, reason string) error {
-	formatted_call := &callEvent{
+	formattedCall := &callEvent{
 		Type:           "stop",
 		CallId:         call.ID,
 		CallType:       call.Type,
@@ -59,13 +59,13 @@ func (u *User) SendCallStop(call Call, reason string) error {
 		return nil
 	}
 	for session := range sessions {
-		session.Emit("call", formatted_call)
+		session.Emit("call", formattedCall)
 	}
 	return nil
 }
 
 func (u *User) SendCallStart(call Call) error {
-	formatted_call := &callEvent{
+	formattedCall := &callEvent{
 		Type:           "start",
 		CallId:         call.ID,
 		CallType:       call.Type,
@@ -81,13 +81,13 @@ func (u *User) SendCallStart(call Call) error {
 		return nil
 	}
 	for session := range sessions {
-		session.Emit("call", formatted_call)
+		session.Emit("call", formattedCall)
 	}
 	return nil
 }
 
 func (u *User) SendCallFinish(call Call) error {
-	formatted_call := &callEvent{
+	formattedCall := &callEvent{
 		Type:           "finish",
 		CallId:         call.ID,
 		CallType:       call.Type,
@@ -104,13 +104,13 @@ func (u *User) SendCallFinish(call Call) error {
 		return errors.New(fmt.Sprintf("User %d not found in any session", u.ID))
 	}
 	for session := range sessions {
-		session.Emit("call", formatted_call)
+		session.Emit("call", formattedCall)
 	}
 	return nil
 }
 
 func (u *User) SendCallAnswer(call Call, decision bool) error {
-	formatted_call := &callResultEvent{
+	formattedCall := &callResultEvent{
 		Type:     "answer",
 		CallId:   call.ID,
 		Decision: decision,
@@ -124,13 +124,13 @@ func (u *User) SendCallAnswer(call Call, decision bool) error {
 		return errors.New(fmt.Sprintf("User %d not found in any session", u.ID))
 	}
 	for session := range sessions {
-		session.Emit("call", formatted_call)
+		session.Emit("call", formattedCall)
 	}
 	return nil
 }
 
 func (u *User) SendCallAftermath(call Call, event_type string, action_type string) error {
-	formatted_call := &callAftermathEvent{
+	formattedCall := &callAftermathEvent{
 		Type:   event_type,
 		Action: action_type,
 		CallId: call.ID,
@@ -144,13 +144,13 @@ func (u *User) SendCallAftermath(call Call, event_type string, action_type strin
 		return errors.New(fmt.Sprintf("User %d not found in any session", u.ID))
 	}
 	for session := range sessions {
-		session.Emit("call_aftermath", formatted_call)
+		session.Emit("call_aftermath", formattedCall)
 	}
 	return nil
 }
 
 func (u *User) SendCallReveal(call Call, decision bool) error {
-	formatted_call := &callResultEvent{
+	formattedCall := &callResultEvent{
 		Type:     "reveal",
 		CallId:   call.ID,
 		Decision: decision,
@@ -164,7 +164,7 @@ func (u *User) SendCallReveal(call Call, decision bool) error {
 		return errors.New(fmt.Sprintf("User %d not found in any session", u.ID))
 	}
 	for session := range sessions {
-		session.Emit("call", formatted_call)
+		session.Emit("call", formattedCall)
 	}
 	return nil
 }
@@ -173,6 +173,12 @@ func (u *User) InCall() bool {
 	var currentCalls int
 	this.db.Table("calls").Where("source_id = ? OR destination_id = ? AND status = ?", u.ID, u.ID, 2).Count(&currentCalls)
 	return currentCalls >= 1
+}
+
+func (u *User) GetActiveCallId() int {
+	var currentCall int
+	this.db.Table("calls").Where("source_id = ? OR destination_id = ? AND status = ?", u.ID, u.ID, 2).Select("id").Row().Scan(&currentCall)
+	return currentCall
 }
 
 func (u *User) SetOnline() error {
@@ -214,5 +220,32 @@ func (u *User) SetOffline() error {
 
 	this.redis.HIncrBy("users:online:time", string(u.ID), time.Now().Unix()-start)
 
+	return nil
+}
+
+func (u *User) SendMessage(message Message) error {
+	formattedMessage := &userMessage{
+		Type:      message.Type,
+		CallId:    message.CallId,
+		Action:    message.Action,
+		CreatedAt: message.CreatedAt,
+		Text:      message.Text,
+	}
+
+	if message.Incognito != true {
+		formattedMessage.Source = message.SourceId
+		formattedMessage.Destination = message.DestinationId
+	}
+
+	sessions, err := FindSocketByUserId(u.ID)
+	if err != nil {
+		return err
+	}
+	if len(sessions) == 0 {
+		return errors.New(fmt.Sprintf("User %d not found in any session", u.ID))
+	}
+	for session := range sessions {
+		session.Emit("user_message", formattedMessage)
+	}
 	return nil
 }

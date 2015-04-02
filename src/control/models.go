@@ -62,3 +62,16 @@ type Call struct {
 	Source              User `sql:"-"`
 	callTimer           time.Timer
 }
+
+type Message struct {
+	Type          string `mapstructure:"type" json:"type"`
+	Source        User   `json:"-"`
+	SourceId      int    `json:"source"`
+	DestinationId int    `mapstructure:"destination" json:"destination"`
+	Text          string `mapstructure:"text" json:"text"`
+	Action        string `mapstructure:"action" json:"action"`
+	CallId        int    `json:"call_id,omitempty"`
+	CreatedAt     string `mapstructure:"created_at" json:"created_at"`
+	ReadAt        string `json:"read_at"`
+	Incognito     bool
+}

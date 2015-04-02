@@ -24,6 +24,11 @@ type CarrierCallAftermathRPC struct {
 	Type   string
 }
 
+type CarrierMessageRPC struct {
+	Destination User
+	Message     Message
+}
+
 type CarrierUserRPC struct {
 	User User
 }
@@ -83,6 +88,12 @@ func (rpc *CarrierRPC) CallReveal(args *CarrierCallBoolRPC, result *error) error
 
 func (rpc *CarrierRPC) CallAftermath(args *CarrierCallAftermathRPC, result *error) error {
 	*result = args.User.SendCallAftermath(args.Call, args.Type, args.Action)
+	res := *result
+	return res
+}
+
+func (rpc *CarrierRPC) SendMessage(args *CarrierMessageRPC, result *error) error {
+	*result = args.Destination.SendMessage(args.Message)
 	res := *result
 	return res
 }

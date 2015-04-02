@@ -64,11 +64,14 @@ type Call struct {
 }
 
 type Message struct {
-	Type        string `json:"type"`
-	Source      User
-	Destination User
-	Text        string `json:"text"`
-	Action      string `json:"action"`
-	Call        Call
-	CreatedAt   time.Time `json:"created_at"`
+	Type          string `mapstructure:"type" json:"type"`
+	Source        User   `json:"-"`
+	SourceId      int    `json:"source"`
+	DestinationId int    `mapstructure:"destination" json:"destination"`
+	Text          string `mapstructure:"text" json:"text"`
+	Action        string `mapstructure:"action" json:"action"`
+	CallId        int    `json:"call_id,omitempty"`
+	CreatedAt     string `mapstructure:"created_at" json:"created_at"`
+	ReadAt        string `json:"read_at"`
+	Incognito     bool
 }

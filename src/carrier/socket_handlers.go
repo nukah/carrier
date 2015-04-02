@@ -3,7 +3,9 @@ package carrier
 import (
 	_ "encoding/base64"
 	"encoding/json"
+	"fmt"
 	"github.com/googollee/go-socket.io"
+	ms "github.com/mitchellh/mapstructure"
 	_ "gopkg.in/vmihailenco/msgpack.v2"
 	"log"
 	_ "net/url"
@@ -68,12 +70,30 @@ func CallCancelHandler(ns socketio.Socket, call_id string) {
 	}
 }
 
-func MessageHandler(ns socketio.Socket, messageJson string) {
-	//user, _ := FindUserBySocket(ns)
-	log.Println("Message handler: ", messageJson)
+func MessageHandler(ns socketio.Socket, messageJson map[string]interface{}) {
 	var message Message
-	if err := json.Unmarshal([]byte(messageJson), &message); err != nil {
-		log.Println("Error ", err)
+	user, _ := FindUserBySocket(ns)
+	ms.Decode(messageJson, &message)
+
+	t := time.Now().UTC()
+
+	message.Source = *user
+	message.SourceId = user.ID
+	message.Action = "send"
+	message.CallId = user.GetActiveCallId()
+	message.CreatedAt = fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
+
+	rMessage, _ := json.Marshal(message)
+
+	defer this.redis.LPush("messages", string(rMessage))
+
+	if user.InCall() && message.Type == "call" {
+		controlCallMessage(message)
+		return
 	}
-	log.Println("Message: ", message)
+
+	if message.Type == "contact" && message.DestinationId != 0 {
+		carrierContactMessage(message)
+		return
+	}
 }
