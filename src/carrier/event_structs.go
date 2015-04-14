@@ -22,10 +22,11 @@ type callAftermathEvent struct {
 }
 
 type userMessage struct {
-	Type      string `json:"type"`
-	CallId    int    `json:"call_id,omitempty"`
-	Action    string `json:"action"`
-	Source    int    `json:"source,omitempty"`
-	CreatedAt string `json:"created_at"`
-	Text      string `json:"text"`
+	Type        string `json:"type"`
+	CallId      int    `json:"call_id,omitempty"`
+	Action      string `json:"action"`
+	Source      int    `json:"source,omitempty"`
+	Destination int    `json:"destination, omitempty"`
+	CreatedAt   string `json:"created_at"`
+	Text        string `json:"text"`
 }

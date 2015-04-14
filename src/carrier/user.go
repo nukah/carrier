@@ -181,6 +181,16 @@ func (u *User) GetActiveCallId() int {
 	return currentCall
 }
 
+func (u *User) HasContact(user_id int) bool {
+	var result int
+	this.db.Table("contacts").Where("owner_id = ? AND user_id = ? AND deleted = ?", u.ID, user_id, false).Count(&result)
+	if result == 1 {
+		return true
+	} else {
+		return false
+	}
+}
+
 func (u *User) SetOnline() error {
 	defer func() {
 		count := this.redis.SCard("users:online").Val()

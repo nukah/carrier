@@ -93,7 +93,9 @@ func MessageHandler(ns socketio.Socket, messageJson map[string]interface{}) {
 	}
 
 	if message.Type == "contact" && message.DestinationId != 0 {
-		carrierContactMessage(message)
-		return
+		if user.HasContact(message.DestinationId) {
+			carrierContactMessage(message)
+			return
+		}
 	}
 }
